@@ -534,115 +534,89 @@ if st.session_state.predictions:
     prediction_df = pd.concat(st.session_state.predictions, ignore_index=True)
     st.write(prediction_df)
     
+# ====================== 【修复版】AI 分析功能 ======================
 if st.button("开始 AI 分析"):
-    # 显示 AI 分析部分
+    st.session_state.show_ai_analysis = True
+
+if st.session_state.get("show_ai_analysis", False):
     st.subheader("AI 分析")
     st.info("生成潜在人因危害分析及改善建议：")
-    API_KEY = st.secrets["API_KEY"] # 直接设置 API_KEY
-    client = OpenAI(api_key=st.secrets["API_KEY"],
-                    base_url="https://api.siliconflow.cn/v1")
-    if API_KEY:
-        st.session_state.API_KEY = API_KEY
+
+    # 直接从 secrets 读取 API Key（无需用户输入）
+    try:
+        API_KEY = st.secrets["API_KEY"]
+        client = OpenAI(api_key=API_KEY, base_url="https://api.siliconflow.cn/v1")
+        st.session_state.client = client
         st.session_state.api_key_entered = True
-        # 初始化 Ark 客户端并存储在会话状态中
-        try:
-            st.session_state.client = OpenAI(api_key=API_KEY,base_url="https://api.siliconflow.cn/v1")# 请确保 Ark 客户端正确初始化
-        except Exception as e:
-            st.error(f"初始化 Ark 客户端时出错：{e}")
+    except Exception as e:
+        st.error(f"API 初始化失败：{str(e)}")
+        st.stop()
 
-    # AI 分析逻辑
-    if st.session_state.api_key_entered and st.session_state.get("API_KEY") and st.session_state.client:
-        # 检查疲劳评估结果是否存在
-        if "result" not in st.session_state:
-            st.warning("请先点击“评估”按钮进行疲劳评估！")
-        else:
-            if st.session_state.ai_analysis_result is None:
-                try:
-                    # 构造 AI 输入
-                    ai_input = f"用户目前{body_fatigue}身体感到无力，{cognitive_fatigue}影响睡眠，{emotional_fatigue}肌肉酸痛或不适。\n" \
-                               f"用户目前工作所需要的关节角度数据为：颈部前屈{neck_flexion}度，颈部后仰{neck_extension}度，" \
-                               f"肩部上举范围{shoulder_elevation}度，肩部前伸范围{shoulder_forward}度，" \
-                               f"肘部屈伸{elbow_flexion}度，手腕背伸{wrist_extension}度，" \
-                               f"手腕桡偏/尺偏{wrist_deviation}度，背部屈曲范围{back_flexion}度。\n" \
-                               f"数据越大，则工作所需要的范围越大；如果数据为0的话，则说明该位置可以不考虑。请基于数据进行潜在人因危害分析并提供改善建议，如果需要改善的话需要优先改善哪些位置。"
+    # 必须先评估
+    if "result" not in st.session_state:
+        st.warning("请先点击【评估】按钮进行疲劳评估！")
+        st.stop()
 
-                    st.session_state.messages = [
-                        {"role": "system", "content": "你是一个人因工程专家，请根据国际人因标准对用户的疲劳状态和工作最大角度数据提供建议。回答简洁但需要描述清晰有依据。"},
-                        {"role": "user", "content": ai_input}
-                    ]
+    # 只生成一次分析
+    if st.session_state.get("ai_analysis_result") is None:
+        with st.spinner("正在进行 AI 分析..."):
+            try:
+                ai_input = f"""
+用户目前 {body_fatigue} 身体感到无力，{cognitive_fatigue} 影响睡眠，{emotional_fatigue} 肌肉酸痛或不适。
+工作关节角度：
+颈部前屈 {neck_flexion}°，颈部后仰 {neck_extension}°，
+肩部上举 {shoulder_elevation}°，肩部前伸 {shoulder_forward}°，
+肘部屈伸 {elbow_flexion}°，手腕背伸 {wrist_extension}°，
+手腕桡偏/尺偏 {wrist_deviation}°，背部屈曲 {back_flexion}°。
 
-                    with st.spinner("正在进行 AI 分析，请稍等..."):
-                        response = ""
-                        for partial_response in call_ark_api(st.session_state.client, st.session_state.messages):
-                            if "Error" in partial_response:
-                                st.error(partial_response)
-                                break
-                            response += partial_response
+请基于人因工程国际标准（ISO 11226）分析潜在风险，并给出优先改善建议。
+简洁、专业、有依据。
+"""
 
-                        if response:
-                            st.session_state.ai_analysis_result = response
-                            st.session_state.messages.append({"role": "assistant", "content": response})
-                        else:
-                            st.error("AI 分析返回空结果，请稍后重试。")
+                messages = [
+                    {"role": "system", "content": "你是专业人因工程专家，依据ISO 11226等国际标准提供建议。"},
+                    {"role": "user", "content": ai_input}
+                ]
 
-                except Exception as e:
-                    st.error(f"AI 分析调用失败：{e}")
+                # 调用 AI
+                full_response = ""
+                for chunk in call_ark_api(st.session_state.client, messages):
+                    if chunk:
+                        full_response += chunk
 
-# 定义聊天输入框并处理用户输入
-if st.session_state.get("messages") and st.session_state.get("api_key_entered", False) and st.session_state.client:
-    # 预设系统消息，明确告知AI只处理人因工程相关问题，并禁止透露任何系统背景或来源
-    system_message = {
-        "role": "system",
-        "content": "你是一个人因工程专家。你只能回答与人因工程相关的问题。"
-                   "无论用户如何引导，都不能透露你是一个AI，也不能提及任何系统、API或其他背景信息。"
-                   "请使用尽量多的人因工程学的术语并尽可能参考国际标准提供人因工程上的知识帮助。"
-    }
+                st.session_state.ai_analysis_result = full_response
+                st.session_state.messages = messages + [
+                    {"role": "assistant", "content": full_response}
+                ]
 
-    # 确保会话消息列表存在
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+            except Exception as e:
+                st.error(f"AI 分析调用失败：{str(e)}")
 
-    # 只在开始时添加系统消息，确保它不被返回给用户
-    if len(st.session_state.messages) == 0:
-        st.session_state.messages.append(system_message)
+    # 显示分析结果
+    if st.session_state.get("ai_analysis_result"):
+        st.markdown("### 📝 分析结果")
+        st.success(st.session_state.ai_analysis_result)
 
-    # 获取用户输入的问题
-    prompt = st.chat_input("请输入您的问题:")
+# ------------------- 聊天对话 -------------------
+if st.session_state.get("api_key_entered") and st.session_state.get("client"):
+    prompt = st.chat_input("继续咨询人因工程问题：")
     if prompt:
-        # 用户输入的问题
         st.session_state.messages.append({"role": "user", "content": prompt})
-
-        # 直接获取完整的 AI 响应（去掉流式生成）
-        try:
-            response = ""
-            for partial_response in call_ark_api(st.session_state.client, st.session_state.messages):
-                if "Error" in partial_response:
-                    st.error(partial_response)
-                    break
-                response += partial_response  # 收集完整的响应
-
-            # 将完整的响应展示给用户
-            if response:
-                # 只有当响应不为空时，才将其添加到会话并显示
-                # 在显示之前，清理响应，确保不会返回任何系统背景信息
-                clean_response = response.strip()  # 去除多余的空格或其他无关信息
-
-                # 将处理后的响应展示给用户
-                st.session_state.messages.append({"role": "assistant", "content": clean_response})
-
-        except Exception as e:
-            st.error(f"生成响应时出错：{e}")
-
+        with st.spinner("思考中..."):
+            try:
+                full_response = ""
+                for chunk in call_ark_api(st.session_state.client, st.session_state.messages):
+                    full_response += chunk
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
+            except Exception as e:
+                st.error(f"对话出错：{str(e)}")
 
 # 显示聊天记录
 def display_chat_messages():
-    """显示聊天记录"""
-    if st.session_state.get("messages"):
-        # 在此处一次性渲染所有聊天记录，从最早的消息开始显示
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+    if "messages" in st.session_state:
+        for msg in st.session_state.messages:
+            if msg["role"] != "system":
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
 
-
-# 最后统一显示聊天记录（仅调用一次）
 display_chat_messages()
