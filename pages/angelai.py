@@ -5,10 +5,11 @@ import streamlit as st
 from PIL import Image
 
 # 初始化模型
-mp_pose = mp.solutions.pose
-mp_hands = mp.solutions.hands
-pose = mp_pose.Pose(min_detection_confidence=0.8, min_tracking_confidence=0.8)
-hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
+mp_pose = mp.solutions.pose.Pose()
+mp_hands = mp.solutions.hands.Hands()
+
+pose = mp_pose
+hands = mp_hands
 
 def get_coord(landmark, model_type='pose', img_width=640, img_height=480):
     """统一三维坐标处理（手部z轴补零）"""
