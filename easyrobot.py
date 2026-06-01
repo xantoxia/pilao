@@ -15,62 +15,12 @@ import datetime
 import io
 import pytz
 
-# 界面配置
-font_path = "SourceHanSansCN-Normal.otf"
-# 检查字体文件是否存在
-if not os.path.exists(font_path):
-    st.error(f"Font file not found: {font_path}")
-else:
-    # 设置字体属性
-    font_prop = font_manager.FontProperties(fname=font_path)
-    font_name = font_prop.get_name()
 
-    # 创建自定义函数来统一设置字体
-    def set_font_properties(ax, font_prop):
-        """统一设置坐标轴和标题字体"""
-        for label in ax.get_xticklabels() + ax.get_yticklabels():
-            label.set_fontproperties(font_prop)
-        ax.title.set_fontproperties(font_prop)
-        ax.xaxis.label.set_fontproperties(font_prop)
-        ax.yaxis.label.set_fontproperties(font_prop)
-
-
-    # 全局设置字体
-    plt.rcParams['font.sans-serif'] = [font_name]
-    plt.rcParams['axes.unicode_minus'] = False
-
-# ⭐️ 1. 缓存媒体管道模型初始化
-@st.cache_resource
-def load_mediapipe_models():
-    mp_pose = mp.solutions.pose
-    mp_hands = mp.solutions.hands
-    pose = mp_pose.Pose(min_detection_confidence=0.8, min_tracking_confidence=0.8)
-    hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
-    return pose, hands
-
-pose, hands = load_mediapipe_models()
-
-# GitHub配置
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-GITHUB_USERNAME = 'HAPPYJINHAPPY'
-GITHUB_REPO = 'chatbot-1'
-GITHUB_BRANCH = 'main' 
-FILE_PATH = 'fatigue_data.csv'
-
-# ⭐️ 2. 缓存数据加载和模型训练
-@st.cache_data
-def load_and_train():
-    file_path = 'corrected_fatigue_simulation_data_Chinese.csv'
-    data = pd.read_csv(file_path, encoding='gbk')
-    X = data.drop(columns=["疲劳等级"])
-    y = data["疲劳等级"]
-    X.columns = X.columns.str.replace(' ', '_')
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    model = RandomForestClassifier(random_state=42)
-    model.fit(X_train, y_train)
-    return model, X_test, y_test
-
-model, X_test, y_test = load_and_train()
+GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]  # 从 Streamlit secrets 中获取 GitHub 令牌
+GITHUB_USERNAME = 'xantoxia'  # 替换为你的 GitHub 用户名
+GITHUB_REPO = 'blank-app-1'  # 替换为你的 GitHub 仓库名
+GITHUB_BRANCH = 'main'  # 要上传的分支
+FILE_PATH = 'fatigue_data.csv'  # 文件路径
 
 # 获取文件内容，指定编码为utf-8，避免UnicodeDecodeError
 def get_file_content(file_path):
@@ -83,7 +33,7 @@ def get_file_content(file_path):
         st.error("文件编码错误，无法解码文件。")
         return None
 
-# GitHub相关函数
+# 获取文件的 SHA 值
 def get_file_sha(file_path):
     url = f'https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/contents/{file_path}'
     headers = {'Authorization': f'token {GITHUB_TOKEN}'}
@@ -101,7 +51,7 @@ def save_to_csv(input_data, result, body_fatigue, cognitive_fatigue, emotional_f
     body_fatigue_score = calculate_score(body_fatigue)
     cognitive_fatigue_score = calculate_score(cognitive_fatigue)
     emotional_fatigue_score = calculate_score(emotional_fatigue)
-
+    
     # 获取当前时间戳
     tz = pytz.timezone('Asia/Shanghai')
     timestamp = datetime.datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
@@ -129,75 +79,94 @@ def save_to_csv(input_data, result, body_fatigue, cognitive_fatigue, emotional_f
     # 检查文件是否存在
     if os.path.exists(FILE_PATH):
         existing_content = get_file_content(FILE_PATH)
-
+        
         # 如果文件内容非空，读取数据
         if existing_content and existing_content.strip():
             existing_df = pd.read_csv(io.StringIO(existing_content))
         else:
             # 如果文件为空，初始化空的 DataFrame
-            existing_df = pd.DataFrame(
-                columns=['timestamp', '颈部前屈', '颈部后仰', '肩部上举范围', '肩部前伸范围', '肘部屈伸', '手腕背伸',
-                         '手腕桡偏/尺偏', '背部屈曲范围', '持续时间', '重复频率', 'fatigue_result',
-                         'body_fatigue_score', 'cognitive_fatigue_score', 'emotional_fatigue_score'])
+            existing_df = pd.DataFrame(columns=['timestamp', '颈部前屈', '颈部后仰', '肩部上举范围', '肩部前伸范围', '肘部屈伸', '手腕背伸', '手腕桡偏/尺偏', '背部屈曲范围', '持续时间', '重复频率', 'fatigue_result', 'body_fatigue_score', 'cognitive_fatigue_score', 'emotional_fatigue_score'])
     else:
         # 文件不存在，初始化空的 DataFrame
-        existing_df = pd.DataFrame(
-            columns=['timestamp', '颈部前屈', '颈部后仰', '肩部上举范围', '肩部前伸范围', '肘部屈伸', '手腕背伸',
-                     '手腕桡偏/尺偏', '背部屈曲范围', '持续时间', '重复频率', 'fatigue_result', 'body_fatigue_score',
-                     'cognitive_fatigue_score', 'emotional_fatigue_score'])
+        existing_df = pd.DataFrame(columns=['timestamp', '颈部前屈', '颈部后仰', '肩部上举范围', '肩部前伸范围', '肘部屈伸', '手腕背伸', '手腕桡偏/尺偏', '背部屈曲范围', '持续时间', '重复频率', 'fatigue_result', 'body_fatigue_score', 'cognitive_fatigue_score', 'emotional_fatigue_score'])
 
     # 合并现有的 DataFrame 和新数据
     updated_df = pd.concat([existing_df, df], ignore_index=True)
 
     # 保存更新后的 DataFrame 到 CSV 文件
     updated_df.to_csv(FILE_PATH, index=False)
-
+# 上传到 GitHub
 def upload_to_github(file_path):
-    try:
-        # 获取 SHA（仅在文件存在时）
-        sha_value = get_file_sha(file_path)
-        
-        # 读取文件内容
-        with open(file_path, "rb") as f:
-            content = base64.b64encode(f.read()).decode()
+    # 获取文件的 SHA 值
+    sha_value = get_file_sha(file_path)
+    
+    # 读取 CSV 文件内容并进行 base64 编码
+    with open(file_path, 'rb') as file:
+        content = base64.b64encode(file.read()).decode()
 
-        # 构造请求数据（动态处理 SHA）
-        data = {
-            "message": "自动同步疲劳数据",
-            "content": content,
-            "branch": GITHUB_BRANCH
-        }
-        
-        # 仅当文件存在时才添加 SHA
-        if sha_value is not None:
-            data["sha"] = sha_value
+    # GitHub API 请求 URL
+    url = f'https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/contents/{file_path}'
 
-        # API 请求
-        headers = {
-            'Authorization': f'Bearer {GITHUB_TOKEN}',
-            'Accept': 'application/vnd.github.v3+json'
-        }
-        response = requests.put(
-            f'https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/contents/{FILE_PATH}',
-            json=data,
-            headers=headers
-        )
+    # 提交的信息
+    commit_message = "Add new fatigue data with timestamp"
+    
+    data = {
+        "message": commit_message,
+        "branch": GITHUB_BRANCH,
+        "content": content,
+    }
+    
+    # 如果文件已经存在，提供 sha 值
+    if sha_value:
+        data["sha"] = sha_value
 
-        # 处理响应
-        if response.status_code in (200, 201):
-            return True
-        else:
-            error_msg = response.json().get('message', '未知错误')
-            st.error(f"同步失败 ({response.status_code}): {error_msg}")
-            return False
-            
-    except Exception as e:
-        st.error(f"网络异常: {str(e)}")
-        return False
+    headers = {
+        'Authorization': f'token {GITHUB_TOKEN}',
+        'Accept': 'application/vnd.github.v3+json',
+    }
 
-# 辅助函数
+    response = requests.put(url, json=data, headers=headers)
+
+    # 输出详细错误信息
+    if response.status_code != 200 and response.status_code != 201:
+        st.error(f"Failed to upload CSV file to GitHub: {response.json()}")
+        print(f"GitHub API Response: {response.json()}")
 def calculate_score(answer):
-    return {'请选择':0, '完全没有':1, '偶尔':2, '经常':3, '总是':4}.get(answer, 0)
+    if answer == '请选择':
+        return 0  # 未选择时，得分为 0
+    elif answer == '完全没有':
+        return 1
+    elif answer == '偶尔':
+        return 2
+    elif answer == '经常':
+        return 3
+    else:  # 总是
+        return 4
+        
+font_path = "SourceHanSansCN-Normal.otf"  # 替换为你的上传字体文件名
+
+# 检查字体文件是否存在
+if not os.path.exists(font_path):
+    st.error(f"Font file not found: {font_path}")
+else:
+    # 设置字体属性
+    font_prop = font_manager.FontProperties(fname=font_path)
+    font_name = font_prop.get_name()
+
+
+    # 创建自定义函数来统一设置字体
+    def set_font_properties(ax, font_prop):
+        """统一设置坐标轴和标题字体"""
+        for label in ax.get_xticklabels() + ax.get_yticklabels():
+            label.set_fontproperties(font_prop)
+        ax.title.set_fontproperties(font_prop)
+        ax.xaxis.label.set_fontproperties(font_prop)
+        ax.yaxis.label.set_fontproperties(font_prop)
+
+
+    # 全局设置字体
+    plt.rcParams['font.sans-serif'] = [font_name]
+    plt.rcParams['axes.unicode_minus'] = False
 
 # Load the uploaded file
 file_path = 'corrected_fatigue_simulation_data_Chinese.csv'
@@ -304,14 +273,11 @@ if st.sidebar.checkbox("模型性能"):
         </ul>
     </div>
     """, unsafe_allow_html=True)
-
-
 @st.cache_resource
 def load_model():
     with open("fatigue_model.pkl", "rb") as f:
         model = pickle.load(f)
     return model
-
 
 model = load_model()
 # Streamlit sidebar
@@ -407,6 +373,37 @@ if st.sidebar.checkbox("标准参考"):
     <div class="footer">通过遵循以上建议，您可以有效减少肌肉骨骼疾病的风险，提升工作效率和舒适度。</div>
     """, unsafe_allow_html=True)
 
+# 使用 Markdown 居中标题
+st.markdown("<h1 style='text-align: center;'>疲劳评估测试系统</h1>", unsafe_allow_html=True)
+st.markdown("""该工具依据国际标准ISO 11226（静态工作姿势）、美国国家职业安全健康研究所的《手动材料处理指南》以及OWAS分析与建议等多套国际标准和规范，对工作过程中的疲劳状态进行科学评估。""")
+
+# 初始化存储所有预测记录的列表
+if 'predictions' not in st.session_state:
+    st.session_state.predictions = []
+st.subheader("角度参数")
+# Two-column layout for sliders
+col1, col2 = st.columns(2)
+
+with col1:
+    neck_flexion = st.slider("颈部前屈", 0, 60, 20)
+    neck_extension = st.slider("颈部后仰", 0, 60, 25)
+    shoulder_elevation = st.slider("肩部上举范围", 0, 180, 60)
+    shoulder_forward = st.slider("肩部前伸范围", 0, 180, 120)
+
+with col2:
+    elbow_flexion = st.slider("肘部屈伸", 0, 180, 120)
+    wrist_extension = st.slider("手腕背伸", 0, 60, 15)
+    wrist_deviation = st.slider("手腕桡偏/尺偏", 0, 30, 10)
+    back_flexion = st.slider("背部屈曲范围", 0, 60, 20)
+
+# Task parameters
+st.subheader("时间参数")
+col3, col4 = st.columns(2)
+with col3:
+    task_duration = st.number_input("持续时间（秒）", min_value=0, value=5)
+with col4:
+    movement_frequency = st.number_input("重复频率（每5分钟）", min_value=0, value=35)
+
 # 初始化会话状态
 if "show_ai_analysis" not in st.session_state:
     st.session_state.show_ai_analysis = False
@@ -419,112 +416,17 @@ if "messages" not in st.session_state:
 if 'client' not in st.session_state:
     st.session_state.client = None
 
-
+    # 定义疲劳评估函数
 def fatigue_prediction(input_data):
     prediction = model.predict(input_data)
     return ["低疲劳状态", "中疲劳状态", "高疲劳状态"][prediction[0]]
-
-# 使用 Markdown 居中标题
-st.markdown("<h1 style='text-align: center;'>疲劳评估测试系统</h1>", unsafe_allow_html=True)
-st.markdown(
-    """该工具依据国际标准ISO 11226（静态工作姿势）、美国国家职业安全健康研究所的《手动材料处理指南》以及OWAS分析与建议等多套国际标准和规范，对工作过程中的疲劳状态进行科学评估。""")
-
-# 初始化存储所有预测记录的列表
-if 'predictions' not in st.session_state:
-    st.session_state.predictions = []
-with st.form("main_form"):
-    st.subheader("角度参数")
-    col1, col2 = st.columns(2)
-    with col1:
-        neck_flexion = st.slider("颈部前屈", 0, 60, 20)
-        neck_extension = st.slider("颈部后仰", 0, 60, 25)
-        shoulder_elevation = st.slider("肩部上举范围", 0, 180, 60)
-        shoulder_forward = st.slider("肩部前伸范围", 0, 180, 120)
-    with col2:
-        elbow_flexion = st.slider("肘部屈伸", 0, 180, 120)
-        wrist_extension = st.slider("手腕背伸", 0, 60, 15)
-        wrist_deviation = st.slider("手腕桡偏/尺偏", 0, 30, 10)
-        back_flexion = st.slider("背部屈曲范围", 0, 60, 20)
-
-    st.subheader("时间参数")
-    col3, col4 = st.columns(2)
-    with col3:
-        task_duration = st.number_input("持续时间（秒）", min_value=0, value=5)
-    with col4:
-        movement_frequency = st.number_input("重复频率（每5分钟）", min_value=0, value=35)
-
-    st.subheader("主观感受")
-    col5, col6, col7 = st.columns(3)
-    with col5:
-        body_fatigue = st.selectbox(
-            "1. 身体感到无力",
-            ['请选择', '完全没有', '偶尔', '经常', '总是'],
-            index=0
-        )
-    with col6:
-        cognitive_fatigue = st.selectbox(
-            "2. 影响睡眠",
-            ['请选择', '完全没有', '偶尔', '经常', '总是'],
-            index=0
-        )
-    with col7:
-        emotional_fatigue = st.selectbox(
-            "3. 肌肉酸痛或不适",
-            ['请选择', '完全没有', '偶尔', '经常', '总是'],
-            index=0
-        )
-
-    # 垂直排列按钮
-    submitted_eval = st.form_submit_button("🚀 开始评估", use_container_width=True)
-    submitted_ai = st.form_submit_button("🤖 AI分析", use_container_width=True)
-
-# 将评估逻辑移出表单，仅在点击时执行
-if submitted_eval:
-    # 输入数据表格
-    input_data = pd.DataFrame({
-        "颈部前屈": [neck_flexion],
-        "颈部后仰": [neck_extension],
-        "肩部上举范围": [shoulder_elevation],
-        "肩部前伸范围": [shoulder_forward],
-        "肘部屈伸": [elbow_flexion],
-        "手腕背伸": [wrist_extension],
-        "手腕桡偏/尺偏": [wrist_deviation],
-        "背部屈曲范围": [back_flexion],
-        "持续时间": [task_duration],
-        "重复频率": [movement_frequency],
-    })
-    
-    # 执行评估逻辑
-    if body_fatigue != '请选择' and cognitive_fatigue != '请选择' and emotional_fatigue != '请选择':
-        score = calculate_score(body_fatigue) + calculate_score(cognitive_fatigue) + calculate_score(emotional_fatigue)
-        result = fatigue_prediction(input_data)
-        
-        # 新增：将结果存入session_state
-        st.session_state.result = result  
-        
-        # 显示结果
-        st.success(f"评估结果：{result}")
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        save_to_csv(input_data, result, body_fatigue, cognitive_fatigue, emotional_fatigue)
-        upload_to_github(FILE_PATH)
-        # 添加结果到记录
-        record = input_data.copy()
-        record["评估"] = result
-        st.session_state.predictions.append(record)
-        
-        # 重置 AI 分析相关的会话状态
-        st.session_state.ai_analysis_result = None
-        st.session_state.messages = []
-        st.session_state.show_ai_analysis = True
-    else:
-        st.warning("请完成所有主观感受的选择！")
 
 
 def call_ark_api(client, messages):
     try:
         ark_messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
         completion = client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-V2.5",
+            model="Pro/deepseek-ai/DeepSeek-V3.2",
             messages=ark_messages,
             stream=True
         )
@@ -536,49 +438,136 @@ def call_ark_api(client, messages):
         st.error(f"调用 Ark API 时出错：{e}")
         yield f"Error: {e}"
 
+
+# 输入数据表格
+input_data = pd.DataFrame({
+    "颈部前屈": [neck_flexion],
+    "颈部后仰": [neck_extension],
+    "肩部上举范围": [shoulder_elevation],
+    "肩部前伸范围": [shoulder_forward],
+    "肘部屈伸": [elbow_flexion],
+    "手腕背伸": [wrist_extension],
+    "手腕桡偏/尺偏": [wrist_deviation],
+    "背部屈曲范围": [back_flexion],
+    "持续时间": [task_duration],
+    "重复频率": [movement_frequency],
+})
+st.subheader("参数信息")
+st.write(input_data)
+
+st.subheader("主观感受")
+# 使用 columns 来并列显示问题
+col1, col2, col3 = st.columns(3)
+
+# 问题1：身体疲劳
+with col1:
+    body_fatigue = st.selectbox(
+        "1. 身体感到无力",
+        ['请选择', '完全没有', '偶尔', '经常', '总是'],
+        index=0  # 初始状态为未选择（'请选择'）
+    )
+
+# 问题2：注意力集中困难
+with col2:
+    cognitive_fatigue = st.selectbox(
+        "2. 影响睡眠",
+        ['请选择', '完全没有', '偶尔', '经常', '总是'],
+        index=0  # 初始状态为未选择（'请选择'）
+    )
+
+# 问题3：情绪疲劳
+with col3:
+    emotional_fatigue = st.selectbox(
+        "3. 肌肉酸痛或不适",
+        ['请选择', '完全没有', '偶尔', '经常', '总是'],
+        index=0  # 初始状态为未选择（'请选择'）
+    )
+
+# 根据选项得分
+def calculate_score(answer):
+    if answer == '请选择':
+        return 0  # 未选择时，得分为 0
+    elif answer == '完全没有':
+        return 1
+    elif answer == '偶尔':
+        return 2
+    elif answer == '经常':
+        return 3
+    else:  # 总是
+        return 4
+
+if st.button("评估"):
+    # 如果用户未选择所有问题，则提示
+    if body_fatigue == '请选择' or cognitive_fatigue == '请选择' or emotional_fatigue == '请选择':
+        st.warning("请先选择所有问题的答案！")
+    else:
+        # 计算总得分
+        score = calculate_score(body_fatigue) + calculate_score(cognitive_fatigue) + calculate_score(emotional_fatigue)
+        # 请确保 fatigue_prediction 函数已定义
+        result = fatigue_prediction(input_data)
+        st.success(f"评估结果：{result}")
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # 保存数据到本地 CSV 文件
+        save_to_csv(input_data, result, body_fatigue, cognitive_fatigue, emotional_fatigue)
+        upload_to_github(FILE_PATH)
+        # 保存评估结果到会话状态
+        st.session_state.result = result
+        record = input_data.copy()
+        record["评估"] = result
+        st.session_state.predictions.append(record)
+
+        # 重置 AI 分析相关的会话状态
+        st.session_state.ai_analysis_result = None
+        st.session_state.messages = []
+        st.session_state.show_ai_analysis = True
+        # 不再要求用户输入API密钥
+        st.session_state.api_key_entered = False
+        if 'API_KEY' in st.session_state:
+            del st.session_state.API_KEY
+        if 'client' in st.session_state:
+            del st.session_state.client  # 删除旧的 Ark 客户端
+            
 # 显示所有保存的预测记录
 if st.session_state.predictions:
     st.subheader("所有评估记录")
     # 将所有记录合并成一个大DataFrame
     prediction_df = pd.concat(st.session_state.predictions, ignore_index=True)
     st.write(prediction_df)
-
-if submitted_ai:
-    API_KEY = "sk-zyiqsryunuwkjonzywoqfwzksxmxngwgdqaagdscgzepnlal"  # 直接设置 API_KEY
-    client = OpenAI(api_key=API_KEY,
+    
+if st.button("开始 AI 分析"):
+    # 显示 AI 分析部分
+    st.subheader("AI 分析")
+    st.info("生成潜在人因危害分析及改善建议：")
+    API_KEY = st.secrets["API_KEY"] # 直接设置 API_KEY
+    client = OpenAI(api_key=st.secrets["API_KEY"],
                     base_url="https://api.siliconflow.cn/v1")
-    st.session_state.client = OpenAI(api_key=API_KEY,
-                                             base_url="https://api.siliconflow.cn/v1")  # 请确保 Ark 客户端正确初始化
     if API_KEY:
         st.session_state.API_KEY = API_KEY
         st.session_state.api_key_entered = True
         # 初始化 Ark 客户端并存储在会话状态中
         try:
-            st.session_state.client = OpenAI(api_key=API_KEY,
-                                             base_url="https://api.siliconflow.cn/v1")  # 请确保 Ark 客户端正确初始化
+            st.session_state.client = OpenAI(api_key=API_KEY,base_url="https://api.siliconflow.cn/v1")# 请确保 Ark 客户端正确初始化
         except Exception as e:
             st.error(f"初始化 Ark 客户端时出错：{e}")
+
     # AI 分析逻辑
     if st.session_state.api_key_entered and st.session_state.get("API_KEY") and st.session_state.client:
         # 检查疲劳评估结果是否存在
         if "result" not in st.session_state:
             st.warning("请先点击“评估”按钮进行疲劳评估！")
         else:
-            st.subheader("AI 分析")
-            st.info("生成潜在人因危害分析及改善建议：")
             if st.session_state.ai_analysis_result is None:
                 try:
                     # 构造 AI 输入
                     ai_input = f"用户目前{body_fatigue}身体感到无力，{cognitive_fatigue}影响睡眠，{emotional_fatigue}肌肉酸痛或不适。\n" \
-                               f"用户提供的角度数据为：颈部前屈{neck_flexion}度，颈部后仰{neck_extension}度，" \
+                               f"用户目前工作所需要的关节角度数据为：颈部前屈{neck_flexion}度，颈部后仰{neck_extension}度，" \
                                f"肩部上举范围{shoulder_elevation}度，肩部前伸范围{shoulder_forward}度，" \
                                f"肘部屈伸{elbow_flexion}度，手腕背伸{wrist_extension}度，" \
                                f"手腕桡偏/尺偏{wrist_deviation}度，背部屈曲范围{back_flexion}度。\n" \
-                               f"请判断用户的疲劳程度，基于数据进行用户潜在人因危害分析并提供改善建议，如果需要改善的话需要优先改善哪些位置。"
+                               f"数据越大，则工作所需要的范围越大；如果数据为0的话，则说明该位置可以不考虑。请基于数据进行潜在人因危害分析并提供改善建议，如果需要改善的话需要优先改善哪些位置。"
 
                     st.session_state.messages = [
-                        {"role": "system",
-                         "content": "你是一个人因工程专家，请根据国际人因标准对用户的疲劳状态和工作最大角度数据提供建议。回答简洁但需要描述清晰有依据。"},
+                        {"role": "system", "content": "你是一个人因工程专家，请根据国际人因标准对用户的疲劳状态和工作最大角度数据提供建议。回答简洁但需要描述清晰有依据。"},
                         {"role": "user", "content": ai_input}
                     ]
 
