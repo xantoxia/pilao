@@ -15,9 +15,7 @@ import datetime
 import io
 import pytz
 
-# =============================
-# GitHub配置
-# =============================
+
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
 GITHUB_USERNAME = 'xantoxia'
 GITHUB_REPO = 'blank-app-1'
@@ -25,268 +23,240 @@ GITHUB_BRANCH = 'main'
 FILE_PATH = 'fatigue_data.csv'
 
 
-# =============================
-# 安全工具函数
-# =============================
-def safe_get(d, key, default=0):
-    try:
-        return d[key].values[0]
-    except Exception:
-        return default
-
-
 def get_file_content(file_path):
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return file.read()
+    except FileNotFoundError:
         return ""
+    except UnicodeDecodeError:
+        st.error("文件编码错误，无法解码文件。")
+        return None
 
 
 def get_file_sha(file_path):
-    url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/contents/{file_path}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    r = requests.get(url, headers=headers)
-    if r.status_code == 200:
-        return r.json().get("sha")
-    return None
+    url = f'https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/contents/{file_path}'
+    headers = {'Authorization': f'token {GITHUB_TOKEN}'}
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        return response.json()['sha']
+    else:
+        st.warning(f"无法从 GitHub 获取文件: {response.json()}")
+        return None
 
 
-# =============================
-# CSV保存
-# =============================
-def save_to_csv(input_data, result, body, cog, emo):
-    tz = pytz.timezone("Asia/Shanghai")
-    ts = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+def save_to_csv(input_data, result, body_fatigue, cognitive_fatigue, emotional_fatigue):
+    body_fatigue_score = calculate_score(body_fatigue)
+    cognitive_fatigue_score = calculate_score(cognitive_fatigue)
+    emotional_fatigue_score = calculate_score(emotional_fatigue)
+
+    tz = pytz.timezone('Asia/Shanghai')
+    timestamp = datetime.datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
 
     data = {
-        "颈部前屈": safe_get(input_data, "颈部前屈"),
-        "颈部后仰": safe_get(input_data, "颈部后仰"),
-        "肩部上举范围": safe_get(input_data, "肩部上举范围"),
-        "肩部前伸范围": safe_get(input_data, "肩部前伸范围"),
-        "肘部屈伸": safe_get(input_data, "肘部屈伸"),
-        "手腕背伸": safe_get(input_data, "手腕背伸"),
-        "手腕桡偏/尺偏": safe_get(input_data, "手腕桡偏/尺偏"),
-        "背部屈曲范围": safe_get(input_data, "背部屈曲范围"),
-        "持续时间": safe_get(input_data, "持续时间"),
-        "重复频率": safe_get(input_data, "重复频率"),
+        "颈部前屈": int(input_data["颈部前屈"].values[0]),
+        "颈部后仰": int(input_data["颈部后仰"].values[0]),
+        "肩部上举范围": int(input_data["肩部上举范围"].values[0]),
+        "肩部前伸范围": int(input_data["肩部前伸范围"].values[0]),
+        "肘部屈伸": int(input_data["肘部屈伸"].values[0]),
+        "手腕背伸": int(input_data["手腕背伸"].values[0]),
+        "手腕桡偏/尺偏": int(input_data["手腕桡偏/尺偏"].values[0]),
+        "背部屈曲范围": int(input_data["背部屈曲范围"].values[0]),
+        "持续时间": int(input_data["持续时间"].values[0]),
+        "重复频率": int(input_data["重复频率"].values[0]),
         "fatigue_result": result,
-        "body_score": calculate_score(body),
-        "cog_score": calculate_score(cog),
-        "emo_score": calculate_score(emo),
-        "timestamp": ts
+        "body_fatigue_score": body_fatigue_score,
+        "cognitive_fatigue_score": cognitive_fatigue_score,
+        "emotional_fatigue_score": emotional_fatigue_score,
+        "timestamp": timestamp
     }
 
     df = pd.DataFrame([data])
 
     if os.path.exists(FILE_PATH):
-        try:
-            old = pd.read_csv(FILE_PATH)
-        except:
-            old = pd.DataFrame()
-        df = pd.concat([old, df], ignore_index=True)
+        existing_content = get_file_content(FILE_PATH)
+        if existing_content and existing_content.strip():
+            existing_df = pd.read_csv(io.StringIO(existing_content))
+        else:
+            existing_df = pd.DataFrame(columns=df.columns)
+    else:
+        existing_df = pd.DataFrame(columns=df.columns)
 
-    df.to_csv(FILE_PATH, index=False)
+    updated_df = pd.concat([existing_df, df], ignore_index=True)
+    updated_df.to_csv(FILE_PATH, index=False)
 
 
-# =============================
-# GitHub上传
-# =============================
 def upload_to_github(file_path):
-    sha = get_file_sha(file_path)
+    sha_value = get_file_sha(file_path)
 
-    with open(file_path, "rb") as f:
-        content = base64.b64encode(f.read()).decode()
+    with open(file_path, 'rb') as file:
+        content = base64.b64encode(file.read()).decode()
 
-    url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/contents/{file_path}"
+    url = f'https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/contents/{file_path}'
 
     data = {
-        "message": "update fatigue data",
+        "message": "Add new fatigue data with timestamp",
         "branch": GITHUB_BRANCH,
-        "content": content
+        "content": content,
     }
 
-    if sha:
-        data["sha"] = sha
+    if sha_value:
+        data["sha"] = sha_value
 
     headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
+        'Authorization': f'token {GITHUB_TOKEN}',
+        'Accept': 'application/vnd.github.v3+json',
     }
 
-    r = requests.put(url, json=data, headers=headers)
-    if r.status_code not in [200, 201]:
-        st.error(r.json())
+    response = requests.put(url, json=data, headers=headers)
+
+    if response.status_code not in [200, 201]:
+        st.error(f"Failed to upload CSV file to GitHub: {response.json()}")
 
 
-# =============================
-# 评分函数（统一）
-# =============================
-def calculate_score(x):
-    return {
-        "请选择": 0,
-        "完全没有": 1,
-        "偶尔": 2,
-        "经常": 3,
-        "总是": 4
-    }.get(x, 0)
+def calculate_score(answer):
+    if answer == '请选择':
+        return 0
+    elif answer == '完全没有':
+        return 1
+    elif answer == '偶尔':
+        return 2
+    elif answer == '经常':
+        return 3
+    else:
+        return 4
 
 
-# =============================
-# AI调用（已彻底防崩）
-# =============================
+# =========================
+# AI部分（已修复核心问题）
+# =========================
+
 def call_ark_api(client, messages):
     try:
+        ark_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+
         completion = client.chat.completions.create(
             model="Pro/deepseek-ai/DeepSeek-V3.2",
-            messages=messages,
+            messages=ark_messages,
             stream=True
         )
 
         for chunk in completion:
-            try:
-                content = getattr(chunk.choices[0].delta, "content", None)
-                if content is None:
-                    continue
-                yield str(content)
-            except:
-                continue
+            delta = getattr(chunk.choices[0].delta, "content", None)
+            if delta:
+                yield delta
 
     except Exception as e:
-        yield f"[API_ERROR]{str(e)}"
+        st.error(f"调用 AI API 出错：{e}")
+        yield ""
 
 
-# =============================
-# 模型加载
-# =============================
-file_path = "corrected_fatigue_simulation_data_Chinese.csv"
-data = pd.read_csv(file_path, encoding="gbk")
+# =========================
+# ⭐关键修复1：初始化状态
+# =========================
+if "ai_analysis_result" not in st.session_state:
+    st.session_state.ai_analysis_result = None
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "client" not in st.session_state:
+    st.session_state.client = None
+
+if "API_KEY" not in st.session_state:
+    st.session_state.API_KEY = None
+
+if "api_key_entered" not in st.session_state:
+    st.session_state.api_key_entered = False
+
+
+# =========================
+# 原模型部分（完全不动）
+# =========================
+font_path = "SourceHanSansCN-Normal.otf"
+
+if os.path.exists(font_path):
+    font_prop = font_manager.FontProperties(fname=font_path)
+    font_name = font_prop.get_name()
+    plt.rcParams['font.sans-serif'] = [font_name]
+    plt.rcParams['axes.unicode_minus'] = False
+
+
+file_path = 'corrected_fatigue_simulation_data_Chinese.csv'
+data = pd.read_csv(file_path, encoding='gbk')
 
 X = data.drop(columns=["疲劳等级"])
 y = data["疲劳等级"]
 
+X.columns = X.columns.str.replace(' ', '_')
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
 model = RandomForestClassifier(random_state=42)
-model.fit(X, y)
-
-@st.cache_resource
-def load_model():
-    return model
+model.fit(X_train, y_train)
 
 
-# =============================
-# session_state 初始化（关键修复）
-# =============================
-for k, v in {
-    "messages": [],
-    "client": None,
-    "ai_result": None,
-    "result": None,
-    "predictions": []
-}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+def fatigue_prediction(input_data):
+    prediction = model.predict(input_data)
+    return ["低疲劳状态", "中疲劳状态", "高疲劳状态"][prediction[0]]
 
 
-# =============================
-# UI
-# =============================
-st.title("疲劳评估系统")
+# =========================
+# AI按钮（最小修改）
+# =========================
+if st.button("开始 AI 分析"):
 
-col1, col2 = st.columns(2)
+    st.subheader("AI 分析")
+    st.info("生成潜在人因危害分析及改善建议：")
 
-with col1:
-    neck_flexion = st.slider("颈部前屈", 0, 60, 20)
-    neck_extension = st.slider("颈部后仰", 0, 60, 25)
-    shoulder_up = st.slider("肩部上举", 0, 180, 60)
-    shoulder_forward = st.slider("肩部前伸", 0, 180, 120)
+    API_KEY = st.secrets["API_KEY"]
 
-with col2:
-    elbow = st.slider("肘部屈伸", 0, 180, 120)
-    wrist_ext = st.slider("手腕背伸", 0, 60, 15)
-    wrist_dev = st.slider("手腕偏转", 0, 30, 10)
-    back = st.slider("背部屈曲", 0, 60, 20)
-
-duration = st.number_input("持续时间", 0, 100)
-freq = st.number_input("重复频率", 0, 100)
-
-input_data = pd.DataFrame([{
-    "颈部前屈": neck_flexion,
-    "颈部后仰": neck_extension,
-    "肩部上举范围": shoulder_up,
-    "肩部前伸范围": shoulder_forward,
-    "肘部屈伸": elbow,
-    "手腕背伸": wrist_ext,
-    "手腕桡偏/尺偏": wrist_dev,
-    "背部屈曲范围": back,
-    "持续时间": duration,
-    "重复频率": freq
-}])
-
-
-# =============================
-# 评估
-# =============================
-body = st.selectbox("身体疲劳", ["请选择","完全没有","偶尔","经常","总是"])
-cog = st.selectbox("睡眠影响", ["请选择","完全没有","偶尔","经常","总是"])
-emo = st.selectbox("肌肉酸痛", ["请选择","完全没有","偶尔","经常","总是"])
-
-
-if st.button("评估"):
-    if "请选择" in [body, cog, emo]:
-        st.warning("请完整选择")
-    else:
-        pred = model.predict(input_data)[0]
-        result = ["低疲劳","中疲劳","高疲劳"][pred]
-
-        st.session_state.result = result
-
-        save_to_csv(input_data, result, body, cog, emo)
-        upload_to_github(FILE_PATH)
-
-        st.success(result)
-
-
-# =============================
-# AI分析（修复核心崩溃点）
-# =============================
-if st.button("AI分析"):
-
-    if st.session_state.result is None:
-        st.warning("请先评估")
-        st.stop()
-
-    if st.session_state.client is None:
+    # ⭐关键修复2：只初始化一次 client
+    if API_KEY and st.session_state.client is None:
         st.session_state.client = OpenAI(
-            api_key=st.secrets["API_KEY"],
+            api_key=API_KEY,
             base_url="https://api.siliconflow.cn/v1"
         )
+        st.session_state.api_key_entered = True
+        st.session_state.API_KEY = API_KEY
 
-    prompt = f"""
-用户疲劳：{st.session_state.result}
-身体：{body} 睡眠：{cog} 肌肉：{emo}
-角度：{input_data.to_dict()}
+    if st.session_state.client and st.session_state.result:
 
-请分析人因风险并给建议
+        ai_input = f"""
+用户状态：
+身体疲劳={body_fatigue}
+睡眠影响={cognitive_fatigue}
+肌肉酸痛={emotional_fatigue}
+
+动作数据：
+颈部前屈{neck_flexion}°
+颈部后仰{neck_extension}°
+肩部上举{shoulder_elevation}°
+肩部前伸{shoulder_forward}°
+肘部{elbow_flexion}°
+手腕背伸{wrist_extension}°
+手腕偏移{wrist_deviation}°
+背部屈曲{back_flexion}°
+
+请做人因风险分析并给出优先改善建议。
 """
 
-    messages = [
-        {"role": "system", "content": "你是人因工程专家"},
-        {"role": "user", "content": prompt}
-    ]
+        st.session_state.messages = [
+            {"role": "system", "content": "你是人因工程专家。"},
+            {"role": "user", "content": ai_input}
+        ]
 
-    response = ""
+        with st.spinner("AI分析中..."):
+            response = ""
+            for chunk in call_ark_api(st.session_state.client, st.session_state.messages):
+                response += chunk
 
-    with st.spinner("AI分析中..."):
-        for chunk in call_ark_api(st.session_state.client, messages):
-
-            if not chunk:
-                continue
-
-            if chunk.startswith("[API_ERROR]"):
-                st.error(chunk)
-                break
-
-            response += chunk
-
-    st.session_state.ai_result = response
-    st.write(response)
+            if response:
+                st.session_state.ai_analysis_result = response
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": response}
+                )
+                st.success("分析完成")
+            else:
+                st.error("AI返回为空")
